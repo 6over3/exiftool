@@ -1,14 +1,48 @@
 {
   "name": "@uswriting/exiftool",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "ExifTool powered by WebAssembly to extract and write metadata from files in browsers and Node.js environments using zeroperl",
   "scripts": {
-    "build": "node build.mjs && tsc --emitDeclarationOnly",
+    "build": "npm run build:esm && npm run build:cjs && node build.mjs",
+    "build:esm": "tsc --emitDeclarationOnly -p tsconfig.esm.json",
+    "build:cjs": "tsc --emitDeclarationOnly -p tsconfig.cjs.json",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "main": "./dist/cjs/index.cjs",
+  "module": "./dist/esm/index.js",
+  "typesVersions": {
+    "*": {
+      "cjs": [
+        "./dist/cjs/types/index.d.ts"
+      ],
+      "esm": [
+        "./dist/esm/types/index.d.ts"
+      ]
+    }
+  },
   "exports": {
-    "import": "./dist/esm/index.esm.js",
-    "types": "./dist/types/index.d.ts"
+    ".": {
+      "import": {
+        "types": "./dist/esm/types/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/types/index.d.ts",
+        "default": "./dist/cjs/index.cjs"
+      }
+    },
+    "./esm": {
+      "import": {
+        "types": "./dist/esm/types/index.d.ts",
+        "default": "./dist/esm/index.js"
+      }
+    },
+    "./cjs": {
+      "require": {
+        "types": "./dist/cjs/types/index.d.ts",
+        "default": "./dist/cjs/index.cjs"
+      }
+    }
   },
   "keywords": [
     "exiftool",
@@ -30,6 +64,10 @@
   "author": "United States Writing Corporation",
   "license": "Apache-2.0",
   "type": "module",
+  "types": "dist/esm/types/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "homepage": "https://github.com/6over3/exiftool#readme",
   "repository": {
     "type": "git",
@@ -39,7 +77,9 @@
     "url": "https://github.com/6over3/exiftool/issues"
   },
   "devDependencies": {
+    "@swc/helpers": "^0.5.17",
     "esbuild": "^0.25.0",
+    "esbuild-plugin-es5": "^2.1.1",
     "esbuild-raw-plugin": "^0.1.1",
     "typescript": "^5.7.3"
   }
