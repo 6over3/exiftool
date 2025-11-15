@@ -1,7 +1,8 @@
 const shared = {
   entrypoints: ['src/index.ts'],
-  sourcemap: 'linked' as const,
+  sourcemap: 'inline' as const,
   minify: true,
+  external: ['@6over3/zeroperl-ts']
 };
 
 await Promise.all([
@@ -25,15 +26,15 @@ await Promise.all([
   // Browser-only demo build
   Bun.build({
     ...shared,
-    outdir: 'demo',
+    outdir: 'public',
     format: 'esm',
     target: 'browser',
     minify: true,
+    entrypoints: ['index.html'],
     external: ['node:*'],
     naming: {
-      entry: 'index.esm.js',
-      chunk: '[name]-[hash].js',
-      asset: '[name]-[hash].[ext]',
+      chunk: '[name].js',
+      asset: '[name].[ext]',
     },
   }),
 ]);

@@ -23,6 +23,15 @@ export class StringBuilder {
   }
 
   /**
+ * Clears all content from the builder
+ * @returns The StringBuilder instance for chaining
+ */
+  clear(): StringBuilder {
+    this.parts = [];
+    return this;
+  }
+
+  /**
    * Appends a string followed by a newline character
    * @param str The string to append
    * @returns The StringBuilder instance for chaining

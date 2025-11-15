@@ -4,3 +4,4 @@ node_modules
 *.esm.js
 *.map
 zeroperl-*.wasm
+public

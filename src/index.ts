@@ -1,19 +1,9 @@
 import exiftool from "./exiftool" with { type: "text" };
+import { ZeroPerl, MemoryFileSystem } from "@6over3/zeroperl-ts";
 import { StringBuilder } from "./sb";
-import {
-	useArgs,
-	useClock,
-	useEnviron,
-	useProc,
-	useRandom,
-	WASI,
-} from "./wasi";
-import { instantiate } from "./wasi/asyncify";
-import { MemoryFileSystem, useMemoryFS } from "./wasi/features/fd";
-import type { WASIOptions } from "./wasi/options";
-import zeroperl from "./zeroperl.wasm" with { type: "wasm" };
 
 type FetchLike = (...args: unknown[]) => Promise<Response>;
+
 export type ExifTags = Record<
 	string,
 	string | number | boolean | (string | number | boolean)[]
@@ -61,8 +51,6 @@ export interface ExifToolOptions<TransformReturn = unknown> {
 	config?: Binaryfile | File;
 }
 
-const textDecoder = new TextDecoder();
-
 /**
  * Represents a binary file for metadata extraction
  */
@@ -83,8 +71,6 @@ type ExifToolOutput<TOutput> =
 			success: true;
 			/** The extracted metadata, transformed if a transform function was provided */
 			data: TOutput;
-			/** Any warnings or info messages from ExifTool */
-			error: string;
 			/** Always 0 for success */
 			exitCode: 0;
 	  }
@@ -99,77 +85,82 @@ type ExifToolOutput<TOutput> =
 			exitCode: number | undefined;
 	  };
 
-// Cache for the loaded WASM module using WeakRef
-let wasmModuleCache: WeakRef<ArrayBuffer> | null = null;
+/**
+ * Cached ZeroPerl instance and filesystem using WeakRef
+ */
+let cachedPerlRef: WeakRef<ZeroPerl> | null = null;
+let cachedFileSystemRef: WeakRef<MemoryFileSystem> | null = null;
 
 /**
- * Detect if running in a browser environment
+ * Global output buffers
  */
-function isBrowser(): boolean {
-	return typeof window !== "undefined" && typeof document !== "undefined";
+const stdout = new StringBuilder();
+const stderr = new StringBuilder();
+const decoder = new TextDecoder();
+
+/**
+ * Get or create the shared ZeroPerl instance
+ */
+async function getZeroPerl(fetchFn?: FetchLike): Promise<{ perl: ZeroPerl; fileSystem: MemoryFileSystem }> {
+	let cachedPerl = cachedPerlRef?.deref();
+	let cachedFileSystem = cachedFileSystemRef?.deref();
+
+	if (cachedPerl && cachedFileSystem) {
+		return { perl: cachedPerl, fileSystem: cachedFileSystem };
+	}
+
+	cachedFileSystem = new MemoryFileSystem({ "/": "" });
+	cachedFileSystem.addFile("/exiftool", exiftool);
+
+	cachedPerl = await ZeroPerl.create({
+		fileSystem: cachedFileSystem,
+		stdout: (data) => {
+			const str = typeof data === 'string' ? data : decoder.decode(data);
+			if (StringBuilder.isMultiline(str)) {
+				stdout.append(str);
+			} else {
+				stdout.appendLine(str);
+			}
+		},
+		stderr: (data) => {
+			const str = typeof data === 'string' ? data : decoder.decode(data);
+			if (StringBuilder.isMultiline(str)) {
+				stderr.append(str);
+			} else {
+				stderr.appendLine(str);
+			}
+		},
+		fetch: fetchFn,
+	});
+
+	cachedPerlRef = new WeakRef(cachedPerl);
+	cachedFileSystemRef = new WeakRef(cachedFileSystem);
+
+	return { perl: cachedPerl, fileSystem: cachedFileSystem };
 }
 
 /**
- * Load WASM module for the current runtime (with caching)
+ * Clean up temporary files from the filesystem
  */
-async function loadWasmModule(
-	fetchFn?: FetchLike,
-): Promise<ArrayBuffer> {
-	// Check cache first
-	if (wasmModuleCache) {
-		console.log('Checking WASM module cache');
-		const cached = wasmModuleCache.deref();
-		if (cached) {
-			console.log('Using cached WASM module');
-			return cached;
+function cleanupTempFiles(fileSystem: MemoryFileSystem, paths: string[]): void {
+	for (const path of paths) {
+		try {
+			fileSystem.removeFile(path);
+		} catch {
+			// Ignore errors if file doesn't exist
 		}
 	}
-
-	let moduleData: ArrayBuffer;
-
-	if (isBrowser()) {
-		console.log('Loading WASM module in browser');
-		const f = fetchFn ?? fetch;
-		const response = await f(zeroperl);
-		moduleData = await response.arrayBuffer();;
-	} else {
-		// Non-browser: load from filesystem
-		const wasmPath = typeof zeroperl === "string" ? zeroperl : "./zeroperl.wasm";
-
-		// Deno
-		//@ts-expect-error
-		if (typeof Deno !== "undefined") {
-			// @ts-expect-error
-			moduleData = (await Deno.readFile(wasmPath)).buffer;
-		}
-		// Bun
-		else if (typeof Bun !== "undefined") {
-			const file = Bun.file(wasmPath);
-			moduleData = await file.arrayBuffer();
-
-		}
-		// Node.js
-		else {
-			const { readFile } = await import("node:fs/promises");
-			moduleData = (await readFile(wasmPath)).buffer;
-		}
-	}
-
-	// Cache the result using WeakRef
-	wasmModuleCache = new WeakRef(moduleData);
-
-	return moduleData;
 }
 
 /**
- * Instantiate WASM module
+ * Transform tags object into ExifTool command-line arguments
  */
-async function instantiateWasmModule(
-	fetchFn: FetchLike | undefined,
-	importObject: WebAssembly.Imports,
-) {
-	const source = await loadWasmModule(fetchFn);
-	return await instantiate(source, importObject);
+function transformTags(tags: ExifTags): string[] {
+	return Object.entries(tags).flatMap(([name, value]) =>
+		Array.isArray(value)
+			? value.map((value) => `-${name}=${value}`)
+			: [`-${name}=${value}`],
+	);
 }
 
 /**
@@ -205,104 +196,87 @@ export async function parseMetadata<TReturn = string>(
 	file: Binaryfile | File,
 	options: ExifToolOptions<TReturn> = {},
 ): Promise<ExifToolOutput<TReturn>> {
-	const fileSystem = new MemoryFileSystem({
-		"/": "",
-	});
+	const { perl, fileSystem } = await getZeroPerl(options.fetch);
+	const tempFiles: string[] = [];
 
-	fileSystem.addFile("/exiftool", exiftool);
-	if (file instanceof File) {
-		fileSystem.addFile(`/${file.name}`, file);
-	} else {
-		fileSystem.addFile(`/${file.name}`, file.data);
-	}
-	if (options.config) {
-		if (options.config instanceof File) {
-			fileSystem.addFile(`/${options.config.name}`, options.config);
+	stdout.clear();
+	stderr.clear();
+	await perl.reset();
+
+	try {
+		const inputPath = `/${file.name}`;
+		if (file instanceof File) {
+			fileSystem.addFile(inputPath, file);
 		} else {
-			fileSystem.addFile(`/${options.config.name}`, options.config.data);
+			fileSystem.addFile(inputPath, file.data);
 		}
-		options.args = options.args || [];
-		options.args.push(`-config=${options.config.name}`);
-	}
-	const stdout = new StringBuilder();
-	const stderr = new StringBuilder();
-	const args = ["zeroperl", "exiftool"].concat(options.args || []);
-	args.push(`/${file.name}`);
-	const wasiOptions: WASIOptions = {
-		env: {},
-		args: args,
-		features: [
-			useEnviron,
-			useArgs,
-			useRandom,
-			useClock,
-			useProc,
-			useMemoryFS({
-				withFileSystem: fileSystem,
-				withStdIo: {
-					stdout: (str) => {
-						let data: string;
-						if (ArrayBuffer.isView(str)) {
-							data = textDecoder.decode(str);
-						} else {
-							data = str;
-						}
-						if (StringBuilder.isMultiline(data)) {
-							stdout.append(data);
-						} else {
-							stdout.appendLine(data);
-						}
-					},
-					stderr: (str) => {
-						let data: string;
-						if (ArrayBuffer.isView(str)) {
-							data = textDecoder.decode(str);
-						} else {
-							data = str;
-						}
-						if (StringBuilder.isMultiline(data)) {
-							stderr.append(data);
-						} else {
-							stderr.appendLine(data);
-						}
-					},
-				},
-			}),
-		],
-	};
-	const wasi = new WASI(wasiOptions);
-	const { instance } = await instantiateWasmModule(options.fetch, {
-		wasi_snapshot_preview1: wasi.wasiImport,
-	});
-	const exitCode = await wasi.start(instance);
-	if (exitCode !== 0) {
-		return {
-			success: false,
-			data: undefined,
-			error: stderr.toString(),
-			exitCode,
-		};
-	}
-	let data: TReturn;
-	if (options.transform) {
-		data = options.transform(stdout.toString());
-	} else {
-		data = stdout.toString() as unknown as TReturn;
-	}
-	return {
-		success: true,
-		data: data,
-		error: stderr.toString(),
-		exitCode,
-	};
-}
+		tempFiles.push(inputPath);
 
-function transformTags(tags: ExifTags): string[] {
-	return Object.entries(tags).flatMap(([name, value]) =>
-		Array.isArray(value)
-			? value.map((value) => `-${name}=${value}`)
-			: [`-${name}=${value}`],
-	);
+		const args = [...(options.args || [])];
+
+		if (options.config) {
+			const configPath = `/${options.config.name}`;
+			if (options.config instanceof File) {
+				fileSystem.addFile(configPath, options.config);
+			} else {
+				fileSystem.addFile(configPath, options.config.data);
+			}
+			tempFiles.push(configPath);
+			args.push(`-config`, configPath);
+		}
+
+		args.push(inputPath);
+
+		const result = await perl.runFile('/exiftool', args);
+		await perl.flush();
+
+		const stderrContent = stderr.toString();
+		const stdoutContent = stdout.toString();
+
+		if (!result.success || result.exitCode !== 0) {
+			const perlError = await perl.getLastError();
+			
+			return {
+				success: false,
+				data: undefined,
+				error: perlError || stderrContent || 'Unknown error',
+				exitCode: result.exitCode,
+			};
+		}
+
+		if (stderrContent && stderrContent.trim()) {
+			return {
+				success: false,
+				data: undefined,
+				error: stderrContent,
+				exitCode: 0,
+			};
+		}
+
+		if (!stdoutContent || !stdoutContent.trim()) {
+			return {
+				success: false,
+				data: undefined,
+				error: 'No output data from ExifTool',
+				exitCode: 0,
+			};
+		}
+
+		let data: TReturn;
+		if (options.transform) {
+			data = options.transform(stdoutContent);
+		} else {
+			data = stdoutContent as unknown as TReturn;
+		}
+
+		return {
+			success: true,
+			data: data,
+			exitCode: 0,
+		};
+	} finally {
+		cleanupTempFiles(fileSystem, tempFiles);
+	}
 }
 
 /**
@@ -311,7 +285,6 @@ function transformTags(tags: ExifTags): string[] {
  * This function modifies an existing file by writing new metadata tags or updating existing ones.
  * The operation runs entirely in the browser using WebAssembly without requiring server uploads.
  *
- * @template TReturn Type of the returned data after transformation (defaults to Uint8Array)
  * @param file File to write metadata to (Browser File object or Binaryfile)
  * @param tags Object containing metadata tags to write, where keys are tag names and values are tag values
  * @param options Configuration options for the write operation
@@ -329,7 +302,7 @@ function transformTags(tags: ExifTags): string[] {
  *   });
  *
  *   if (result.success) {
- *     // result.data contains the modified file as Uint8Array
+ *     // result.data contains the modified file as ArrayBuffer
  *     const modifiedBlob = new Blob([result.data]);
  *     // Save or use the modified file
  *   }
@@ -373,128 +346,112 @@ function transformTags(tags: ExifTags): string[] {
  * - Supports all ExifTool-compatible metadata formats (EXIF, IPTC, XMP, etc.)
  * - Tag names should follow ExifTool conventions (e.g., 'EXIF:Artist', 'XMP:Creator')
  * - Array values in tags are automatically converted to multiple ExifTool arguments
- * - The returned Uint8Array can be converted to a Blob for download or further processing
+ * - The returned ArrayBuffer can be converted to a Blob for download or further processing
  *
  * @see {@link https://exiftool.org/TagNames/index.html} for complete tag reference
  * @see {@link parseMetadata} for reading metadata from files
- *
- * @since 1.0.4
  */
 export async function writeMetadata(
 	file: Binaryfile | File,
 	tags: ExifTags,
 	options: ExifToolOptions = {},
 ): Promise<ExifToolOutput<ArrayBuffer>> {
-	const fileSystem = new MemoryFileSystem({
-		"/": "",
-	});
+	const { perl, fileSystem } = await getZeroPerl(options.fetch);
+	const tempFiles: string[] = [];
 
-	const args = options.args || [];
+	stdout.clear();
+	stderr.clear();
+	await perl.reset();
 
-	fileSystem.addFile("/exiftool", exiftool);
-	if (file instanceof File) {
-		fileSystem.addFile(`/${file.name}`, file);
-	} else {
-		fileSystem.addFile(`/${file.name}`, file.data);
-	}
-
-	if (options.config) {
-		if (options.config instanceof File) {
-			fileSystem.addFile(`/${options.config.name}`, options.config);
+	try {
+		const inputPath = `/${file.name}`;
+		if (file instanceof File) {
+			fileSystem.addFile(inputPath, file);
 		} else {
-			fileSystem.addFile(`/${options.config.name}`, options.config.data);
+			fileSystem.addFile(inputPath, file.data);
 		}
-		args.push(`-config=${options.config.name}`);
+		tempFiles.push(inputPath);
+
+		const args = [...(options.args || [])];
+
+		if (options.config) {
+			const configPath = `/${options.config.name}`;
+			if (options.config instanceof File) {
+				fileSystem.addFile(configPath, options.config);
+			} else {
+				fileSystem.addFile(configPath, options.config.data);
+			}
+			tempFiles.push(configPath);
+			args.push(`-config`, configPath);
+		}
+
+		args.push(...transformTags(tags));
+
+		const tempFile = `/${crypto.randomUUID().replace(/-/g, "")}.tmp`;
+		tempFiles.push(tempFile);
+
+		args.push("-o", tempFile);
+		args.push(inputPath);
+
+		const result = await perl.runFile('/exiftool', args);
+		await perl.flush();
+
+		const stderrContent = stderr.toString();
+
+		if (!result.success || result.exitCode !== 0) {
+			const perlError = await perl.getLastError();
+			
+			return {
+				success: false,
+				data: undefined,
+				error: perlError || stderrContent || 'Unknown error',
+				exitCode: result.exitCode,
+			};
+		}
+
+		if (stderrContent && stderrContent.trim()) {
+			return {
+				success: false,
+				data: undefined,
+				error: stderrContent,
+				exitCode: 0,
+			};
+		}
+
+		const node = fileSystem.lookup(tempFile);
+		if (!node || node.type !== "file") {
+			return {
+				success: false,
+				data: undefined,
+				error: `Temporary output file not found: ${tempFile}`,
+				exitCode: 0,
+			};
+		}
+
+		const outputData =
+			node.content instanceof Blob
+				? await node.content.arrayBuffer()
+				: (node.content.buffer as ArrayBuffer);
+
+		return {
+			success: true,
+			data: outputData,
+			exitCode: 0,
+		};
+	} finally {
+		cleanupTempFiles(fileSystem, tempFiles);
 	}
+}
 
-	args.push(...transformTags(tags));
-	const tempFile = `/${crypto.randomUUID().replace(/-/g, "")}.tmp`;
-
-	const exiftoolArgs = ["zeroperl", "exiftool"];
-	exiftoolArgs.push(...args);
-	exiftoolArgs.push("-o", tempFile);
-	exiftoolArgs.push(`/${file.name}`);
-
-	const stdout = new StringBuilder();
-	const stderr = new StringBuilder();
-
-	const wasiOptions: WASIOptions = {
-		env: {},
-		args: exiftoolArgs,
-		features: [
-			useEnviron,
-			useArgs,
-			useRandom,
-			useClock,
-			useProc,
-			useMemoryFS({
-				withFileSystem: fileSystem,
-				withStdIo: {
-					stdout: (str) => {
-						let data: string;
-						if (ArrayBuffer.isView(str)) {
-							data = textDecoder.decode(str);
-						} else {
-							data = str;
-						}
-						if (StringBuilder.isMultiline(data)) {
-							stdout.append(data);
-						} else {
-							stdout.appendLine(data);
-						}
-					},
-					stderr: (str) => {
-						let data: string;
-						if (ArrayBuffer.isView(str)) {
-							data = textDecoder.decode(str);
-						} else {
-							data = str;
-						}
-						if (StringBuilder.isMultiline(data)) {
-							stderr.append(data);
-						} else {
-							stderr.appendLine(data);
-						}
-					},
-				},
-			}),
-		],
-	};
-	const wasi = new WASI(wasiOptions);
+/**
+ * Dispose of the cached ZeroPerl instance
+ */
+export async function dispose(): Promise<void> {
+	const cachedPerl = cachedPerlRef?.deref();
 	
-	const { instance } = await instantiateWasmModule(options.fetch, {
-		wasi_snapshot_preview1: wasi.wasiImport,
-	});
-
-	const exitCode = await wasi.start(instance);
-
-	if (exitCode !== 0) {
-		return {
-			success: false,
-			data: undefined,
-			error: stderr.toString(),
-			exitCode,
-		};
+	if (cachedPerl) {
+		await cachedPerl.dispose();
+		cachedPerlRef = null;
+		cachedFileSystemRef = null;
 	}
-
-	const node = fileSystem.lookup(tempFile);
-	if (!node || node.type !== "file") {
-		return {
-			success: false,
-			data: undefined,
-			error: `Temporary output file not found: ${tempFile}`,
-			exitCode,
-		};
-	}
-
-	const outputData =
-		node.content instanceof Blob
-			? await node.content.arrayBuffer()
-			: (node.content.buffer as ArrayBuffer);
-	return {
-		success: true,
-		data: outputData,
-		error: stderr.toString(),
-		exitCode,
-	};
 }

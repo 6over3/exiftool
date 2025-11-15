@@ -1,7 +1,11 @@
 demo
 node_modules
 tests
-build.mjs
+test
+build.ts
 src
+public
 tsconfig.json
+tsconfig.esm.json
+tsconfig.cjs.json
 .github

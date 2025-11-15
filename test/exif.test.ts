@@ -1,10 +1,8 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "bun:test";
 import { parseMetadata, writeMetadata } from "../src/index";
 
 describe("EXIF Unicode Character Handling", () => {
-	let testJpegFile: File;
-
-	beforeAll(async () => {
+	function createTestJpeg(): File {
 		// Create a minimal JPEG file for testing
 		// This is a 1x1 pixel red JPEG
 		const jpegData = new Uint8Array([
@@ -23,11 +21,12 @@ describe("EXIF Unicode Character Handling", () => {
 			0x00, 0x00, 0xff, 0xda, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3f, 0x00,
 			0x7f, 0x80, 0xff, 0xd9,
 		]);
-		testJpegFile = new File([jpegData], "test.jpg", { type: "image/jpeg" });
-	});
+		return new File([jpegData], "test.jpg", { type: "image/jpeg" });
+	}
 
 	describe("Korean (한국어) Character Handling", () => {
 		it("should correctly preserve Korean text in Artist field", async () => {
+			const testJpegFile = createTestJpeg();
 			const koreanText = "안녕하세요";
 
 			const writeResult = await writeMetadata(
@@ -40,6 +39,8 @@ describe("EXIF Unicode Character Handling", () => {
 				},
 			);
 
+			console.log(writeResult);
+
 			expect(writeResult.success).toBe(true);
 			expect(writeResult.data).toBeDefined();
 
@@ -51,9 +52,11 @@ describe("EXIF Unicode Character Handling", () => {
 			const readResult = await parseMetadata(modified, {
 				args: ["-json"],
 			});
+			console
 
 			expect(readResult.success).toBe(true);
 			expect(readResult.data).toBeDefined();
+			console.log(readResult);
 
 			if (!readResult.data) {
 				throw new Error("Read operation failed");
@@ -65,6 +68,7 @@ describe("EXIF Unicode Character Handling", () => {
 		});
 
 		it("should handle multiple Korean metadata fields", async () => {
+			const testJpegFile = createTestJpeg();
 			const metadata = {
 				Artist: "김철수",
 				ImageDescription: "서울의 아름다운 풍경",
@@ -93,6 +97,7 @@ describe("EXIF Unicode Character Handling", () => {
 		});
 
 		it("should handle Korean text with special characters", async () => {
+			const testJpegFile = createTestJpeg();
 			const koreanText = "안녕하세요! 반갑습니다? (한국어)";
 
 			const writeResult = await writeMetadata(
@@ -123,6 +128,7 @@ describe("EXIF Unicode Character Handling", () => {
 
 	describe("Japanese (日本語) Character Handling", () => {
 		it("should correctly preserve Japanese text in Artist field", async () => {
+			const testJpegFile = createTestJpeg();
 			const japaneseText = "こんにちは世界";
 
 			const writeResult = await writeMetadata(
@@ -152,6 +158,7 @@ describe("EXIF Unicode Character Handling", () => {
 		});
 
 		it("should handle mixed Hiragana, Katakana, and Kanji", async () => {
+			const testJpegFile = createTestJpeg();
 			const japaneseText = "ひらがな カタカナ 漢字";
 
 			const writeResult = await writeMetadata(
@@ -182,6 +189,7 @@ describe("EXIF Unicode Character Handling", () => {
 
 	describe("Chinese (中文) Character Handling", () => {
 		it("should correctly preserve Simplified Chinese text", async () => {
+			const testJpegFile = createTestJpeg();
 			const chineseText = "你好世界";
 
 			const writeResult = await writeMetadata(
@@ -211,6 +219,7 @@ describe("EXIF Unicode Character Handling", () => {
 		});
 
 		it("should correctly preserve Traditional Chinese text", async () => {
+			const testJpegFile = createTestJpeg();
 			const chineseText = "繁體中文測試";
 
 			const writeResult = await writeMetadata(
@@ -241,6 +250,7 @@ describe("EXIF Unicode Character Handling", () => {
 
 	describe("Mixed Unicode Character Handling", () => {
 		it("should handle English text (baseline test)", async () => {
+			const testJpegFile = createTestJpeg();
 			const englishText = "Hello World";
 
 			const writeResult = await writeMetadata(
@@ -269,6 +279,7 @@ describe("EXIF Unicode Character Handling", () => {
 		});
 
 		it("should handle mixed language metadata", async () => {
+			const testJpegFile = createTestJpeg();
 			const mixedText = "Hello 안녕하세요 こんにちは 你好";
 
 			const writeResult = await writeMetadata(
@@ -297,6 +308,7 @@ describe("EXIF Unicode Character Handling", () => {
 		});
 
 		it("should handle emoji and extended Unicode characters", async () => {
+			const testJpegFile = createTestJpeg();
 			const emojiText = "📷 Photo by 김철수 🌸";
 
 			const writeResult = await writeMetadata(
@@ -327,6 +339,7 @@ describe("EXIF Unicode Character Handling", () => {
 
 	describe("Byte Length Validation", () => {
 		it("should preserve correct byte representation for Korean text", async () => {
+			const testJpegFile = createTestJpeg();
 			const koreanText = "안녕하세요";
 			const expectedByteLength = new TextEncoder().encode(koreanText).length;
 
@@ -361,6 +374,7 @@ describe("EXIF Unicode Character Handling", () => {
 
 	describe("Edge Cases", () => {
 		it("should handle empty strings", async () => {
+			const testJpegFile = createTestJpeg();
 			const writeResult = await writeMetadata(
 				testJpegFile,
 				{
@@ -388,6 +402,7 @@ describe("EXIF Unicode Character Handling", () => {
 		});
 
 		it("should handle very long Korean text", async () => {
+			const testJpegFile = createTestJpeg();
 			const longText = "안녕하세요".repeat(50);
 
 			const writeResult = await writeMetadata(
@@ -416,6 +431,7 @@ describe("EXIF Unicode Character Handling", () => {
 		});
 
 		it("should detect corruption by checking for replacement characters", async () => {
+			const testJpegFile = createTestJpeg();
 			const koreanText = "안녕하세요";
 
 			const writeResult = await writeMetadata(
