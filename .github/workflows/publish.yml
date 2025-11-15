@@ -22,8 +22,13 @@ jobs:
       - name: Install dependencies
         run: npm i
 
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Test package
+        run: bun test
+
       - name: Build package
-        run: npm run build
+        run: bun run build
 
       - name: Prepare release
         run: |

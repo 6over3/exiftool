@@ -4,7 +4,7 @@ import type { WASIOptions } from "../options";
 /**
  * A feature provider that provides `clock_res_get` and `clock_time_get` by JavaScript's Date.
  */
-export function useClock(options: WASIOptions, abi: WASIAbi, memoryView: () => DataView): WebAssembly.ModuleImports {
+export function useClock(_options: WASIOptions, _abi: WASIAbi, memoryView: () => DataView): WebAssembly.ModuleImports {
     return {
         clock_res_get: (clockId: number, resolution: number) => {
             let resolutionValue: number;
@@ -25,7 +25,7 @@ export function useClock(options: WASIOptions, abi: WASIAbi, memoryView: () => D
             view.setUint32(resolution, resolutionValue, true);
             return WASIAbi.WASI_ESUCCESS;
         },
-        clock_time_get: (clockId: number, precision: number, time: number) => {
+        clock_time_get: (clockId: number, _precision: number, time: number) => {
             let nowMs = 0;
             switch (clockId) {
                 case WASIAbi.WASI_CLOCK_MONOTONIC: {

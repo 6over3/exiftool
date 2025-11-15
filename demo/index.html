@@ -511,7 +511,7 @@
     <script type="module">
         import { parseMetadata, writeMetadata } from '/index.esm.js';
 
-        document.addEventListener('DOMContentLoaded', function () {
+        document.addEventListener('DOMContentLoaded', () => {
             let currentFileExtract = null;
             let currentFileWrite = null;
             let modifiedFileData = null;
@@ -557,7 +557,7 @@
                 setupFileHandling(dropzone, fileInput, selectedFile, fileName, fileSize, removeFile,
                     runExifTool, resetBtn, (file) => { currentFileExtract = file; });
 
-                runExifTool.addEventListener('click', async function () {
+                runExifTool.addEventListener('click', async () => {
                     if (!currentFileExtract) return;
 
                     spinner.style.display = 'inline-block';
@@ -628,7 +628,7 @@
                     addMetadataField(metadataFields, '', '');
                 });
 
-                writeMetadataBtn.addEventListener('click', async function () {
+                writeMetadataBtn.addEventListener('click', async () => {
                     if (!currentFileWrite) return;
 
                     const tags = {};
@@ -703,7 +703,7 @@
                                 const extractContainer = document.getElementById('resultContainer-extract');
                                 showResults(extractContainer, extractStatus, extractOutput, result.data);
                             }
-                        } catch (error) {
+                        } catch (_error) {
                             alert('Failed to extract metadata from modified file');
                         }
                     }
@@ -712,14 +712,14 @@
 
             function setupFileHandling(dropzone, fileInput, selectedFile, fileName, fileSize, removeFile,
                 actionBtn, resetBtn, onFileSelect) {
-                fileInput.addEventListener('change', function (e) {
+                fileInput.addEventListener('change', (_e) => {
                     if (fileInput.files.length > 0) {
                         handleFileSelection(fileInput.files[0]);
                     }
                 });
 
                 ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-                    dropzone.addEventListener(eventName, function (e) {
+                    dropzone.addEventListener(eventName, (e) => {
                         e.preventDefault();
                         e.stopPropagation();
                     }, false);
@@ -733,7 +733,7 @@
                     dropzone.style.backgroundColor = '';
                 });
 
-                dropzone.addEventListener('drop', function (e) {
+                dropzone.addEventListener('drop', (e) => {
                     dropzone.style.backgroundColor = '';
                     if (e.dataTransfer.files.length > 0) {
                         handleFileSelection(e.dataTransfer.files[0]);
@@ -809,7 +809,7 @@
                 const k = 1024;
                 const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
                 const i = Math.floor(Math.log(bytes) / Math.log(k));
-                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+                return `${parseFloat((bytes / k ** i).toFixed(2))} ${sizes[i]}`;
             }
 
             function showResults(resultContainer, status, metadataOutput, data) {
@@ -843,7 +843,7 @@
             function copyToClipboard(metadataOutput, copyBtn) {
                 navigator.clipboard.writeText(metadataOutput.textContent)
                     .then(() => {
-                        const originalText = copyBtn.textContent;
+                        const _originalText = copyBtn.textContent;
                         copyBtn.textContent = 'Copied!';
                         setTimeout(() => {
                             copyBtn.textContent = 'Copy';

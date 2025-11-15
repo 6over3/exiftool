@@ -144,7 +144,7 @@ function bindStdio(
  * This provides `fd_write`, `fd_prestat_get` and `fd_prestat_dir_name` implementations to make libc work with minimal effort.
  */
 export function useStdio(useOptions: StdIoOptions = {}): WASIFeatureProvider {
-  return (options, abi, memoryView) => {
+  return (_options, abi, memoryView) => {
     const fdTable = bindStdio(useOptions);
     return {
       fd_fdstat_get: (fd: number, buf: number) => {
@@ -160,10 +160,10 @@ export function useStdio(useOptions: StdIoOptions = {}): WASIFeatureProvider {
         const view = memoryView();
         abi.writeFilestat(view, buf, WASIAbi.WASI_FILETYPE_CHARACTER_DEVICE);
       },
-      fd_prestat_get: (fd: number, buf: number) => {
+      fd_prestat_get: (_fd: number, _buf: number) => {
         return WASIAbi.WASI_ERRNO_BADF;
       },
-      fd_prestat_dir_name: (fd: number, buf: number) => {
+      fd_prestat_dir_name: (_fd: number, _buf: number) => {
         return WASIAbi.WASI_ERRNO_BADF;
       },
       fd_write: (
@@ -352,7 +352,7 @@ export class MemoryFileSystem {
     if (normalizedPath === "/") return this.root;
 
     const parts = normalizedPath.split("/").filter((p) => p.length > 0);
-    let current: FSNode = this.root;
+    let current: FSNode | undefined = this.root;
 
     for (const part of parts) {
       if (current.type !== "dir") return null;
@@ -372,7 +372,7 @@ export class MemoryFileSystem {
   resolve(dir: DirectoryNode, relativePath: string): FSNode | null {
     const normalizedPath = this.normalizePath(relativePath);
     const parts = normalizedPath.split("/").filter((p) => p.length > 0);
-    let current: FSNode = dir;
+    let current: FSNode | undefined = dir;
 
     for (const part of parts) {
       if (part === ".") continue;
@@ -560,7 +560,7 @@ export function useMemoryFS(
     function getFileFromPath(guestPath: string): OpenFile | null {
       for (const fd in files) {
         const file = files[fd];
-        if (file.path === guestPath) return file;
+        if (file?.path === guestPath) return file;
       }
       return null;
     }
@@ -966,7 +966,7 @@ export function useMemoryFS(
 
       path_filestat_get: (
         fd: number,
-        flags: number,
+        _flags: number,
         pathPtr: number,
         pathLen: number,
         buf: number
@@ -1015,8 +1015,8 @@ export function useMemoryFS(
   };
 }
 
-export function useFS(useOptions: { fs: unknown }): WASIFeatureProvider {
-  return (options: WASIOptions, abi: WASIAbi, memoryView: () => DataView) => {
+export function useFS(_useOptions: { fs: unknown }): WASIFeatureProvider {
+  return (_options: WASIOptions, _abi: WASIAbi, _memoryView: () => DataView) => {
     // TODO: implement fd_* syscalls using `useOptions.fs`
     return {};
   };
