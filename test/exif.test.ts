@@ -1,8 +1,9 @@
-import { beforeAll, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import { parseMetadata, writeMetadata } from "../src/index";
 
 describe("EXIF Unicode Character Handling", () => {
 	function createTestJpeg(): File {
+	
 		// Create a minimal JPEG file for testing
 		// This is a 1x1 pixel red JPEG
 		const jpegData = new Uint8Array([
@@ -463,5 +464,35 @@ describe("EXIF Unicode Character Handling", () => {
 			// Check the text is actually Korean (at least contains some Hangul characters)
 			expect(parsed.Artist).toMatch(/[\u3131-\uD79D]/);
 		});
+	});
+});
+
+describe("EXR File Handling", () => {
+
+	it("should parse EXR files without format errors", async () => {
+		const exrData = Bun.file("test/data/BrightRings.exr");
+
+		const ff = new File([await exrData.arrayBuffer()], "BrightRings.exr", { type: "image/exr" });
+	
+
+		const result = await parseMetadata(ff, {
+			args: ["-json"],
+		});
+
+		console.log(result);
+
+		expect(result.success).toBe(true);
+		if (!result.data) throw new Error("Parse failed");
+
+		console.log(result.data);
+
+		const parsed = JSON.parse(result.data)[0];
+
+		// Should not have the EXR format error warning
+		expect(parsed.Warning).toBeUndefined();
+
+		// Should have correctly parsed image dimensions
+		expect(parsed.ImageWidth).toBe(800);
+		expect(parsed.ImageHeight).toBe(800);
 	});
 });

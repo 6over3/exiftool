@@ -1,6 +1,6 @@
 //@ts-expect-error: Ignore wasm import issue
 import zeroperl from "@6over3/zeroperl-ts/zeroperl.wasm";
-import { dispose, parseMetadata, writeMetadata } from "./src/index";
+import { parseMetadata, writeMetadata } from "./src/index";
 
 document.addEventListener("DOMContentLoaded", () => {
     console.log("WASM loaded:", zeroperl);

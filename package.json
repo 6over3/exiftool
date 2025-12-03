@@ -81,6 +81,6 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
-    "@6over3/zeroperl-ts": "1.0.8"
+    "@6over3/zeroperl-ts": "1.0.9"
   }
 }

@@ -1,5 +1,5 @@
+import { MemoryFileSystem, ZeroPerl } from "@6over3/zeroperl-ts";
 import exiftool from "./exiftool" with { type: "text" };
-import { ZeroPerl, MemoryFileSystem } from "@6over3/zeroperl-ts";
 import { StringBuilder } from "./sb";
 
 type FetchLike = (...args: unknown[]) => Promise<Response>;
@@ -101,7 +101,9 @@ const decoder = new TextDecoder();
 /**
  * Get or create the shared ZeroPerl instance
  */
-async function getZeroPerl(fetchFn?: FetchLike): Promise<{ perl: ZeroPerl; fileSystem: MemoryFileSystem }> {
+async function getZeroPerl(
+	fetchFn?: FetchLike,
+): Promise<{ perl: ZeroPerl; fileSystem: MemoryFileSystem }> {
 	let cachedPerl = cachedPerlRef?.deref();
 	let cachedFileSystem = cachedFileSystemRef?.deref();
 
@@ -115,20 +117,12 @@ async function getZeroPerl(fetchFn?: FetchLike): Promise<{ perl: ZeroPerl; fileS
 	cachedPerl = await ZeroPerl.create({
 		fileSystem: cachedFileSystem,
 		stdout: (data) => {
-			const str = typeof data === 'string' ? data : decoder.decode(data);
-			if (StringBuilder.isMultiline(str)) {
-				stdout.append(str);
-			} else {
-				stdout.appendLine(str);
-			}
+			const str = typeof data === "string" ? data : decoder.decode(data);
+			stdout.append(str);
 		},
 		stderr: (data) => {
-			const str = typeof data === 'string' ? data : decoder.decode(data);
-			if (StringBuilder.isMultiline(str)) {
-				stderr.append(str);
-			} else {
-				stderr.appendLine(str);
-			}
+			const str = typeof data === "string" ? data : decoder.decode(data);
+			stderr.append(str);
 		},
 		fetch: fetchFn,
 	});
@@ -227,7 +221,7 @@ export async function parseMetadata<TReturn = string>(
 
 		args.push(inputPath);
 
-		const result = await perl.runFile('/exiftool', args);
+		const result = await perl.runFile("/exiftool", args);
 		await perl.flush();
 
 		const stderrContent = stderr.toString();
@@ -235,16 +229,16 @@ export async function parseMetadata<TReturn = string>(
 
 		if (!result.success || result.exitCode !== 0) {
 			const perlError = await perl.getLastError();
-			
+
 			return {
 				success: false,
 				data: undefined,
-				error: perlError || stderrContent || 'Unknown error',
+				error: perlError || stderrContent || "Unknown error",
 				exitCode: result.exitCode,
 			};
 		}
 
-		if (stderrContent && stderrContent.trim()) {
+		if (stderrContent?.trim()) {
 			return {
 				success: false,
 				data: undefined,
@@ -257,7 +251,7 @@ export async function parseMetadata<TReturn = string>(
 			return {
 				success: false,
 				data: undefined,
-				error: 'No output data from ExifTool',
+				error: "No output data from ExifTool",
 				exitCode: 0,
 			};
 		}
@@ -393,23 +387,23 @@ export async function writeMetadata(
 		args.push("-o", tempFile);
 		args.push(inputPath);
 
-		const result = await perl.runFile('/exiftool', args);
+		const result = await perl.runFile("/exiftool", args);
 		await perl.flush();
 
 		const stderrContent = stderr.toString();
 
 		if (!result.success || result.exitCode !== 0) {
 			const perlError = await perl.getLastError();
-			
+
 			return {
 				success: false,
 				data: undefined,
-				error: perlError || stderrContent || 'Unknown error',
+				error: perlError || stderrContent || "Unknown error",
 				exitCode: result.exitCode,
 			};
 		}
 
-		if (stderrContent && stderrContent.trim()) {
+		if (stderrContent?.trim()) {
 			return {
 				success: false,
 				data: undefined,
@@ -448,7 +442,7 @@ export async function writeMetadata(
  */
 export async function dispose(): Promise<void> {
 	const cachedPerl = cachedPerlRef?.deref();
-	
+
 	if (cachedPerl) {
 		await cachedPerl.dispose();
 		cachedPerlRef = null;
