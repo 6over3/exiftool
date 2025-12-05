@@ -222,13 +222,13 @@ export async function parseMetadata<TReturn = string>(
 		args.push(inputPath);
 
 		const result = await perl.runFile("/exiftool", args);
-		await perl.flush();
+		perl.flush();
 
 		const stderrContent = stderr.toString();
 		const stdoutContent = stdout.toString();
 
 		if (!result.success || result.exitCode !== 0) {
-			const perlError = await perl.getLastError();
+			const perlError = perl.getLastError();
 
 			return {
 				success: false,
@@ -238,7 +238,7 @@ export async function parseMetadata<TReturn = string>(
 			};
 		}
 
-		if (stderrContent?.trim()) {
+		if (stderrContent && stderrContent.trim()) {
 			return {
 				success: false,
 				data: undefined,
@@ -388,12 +388,12 @@ export async function writeMetadata(
 		args.push(inputPath);
 
 		const result = await perl.runFile("/exiftool", args);
-		await perl.flush();
+		perl.flush();
 
 		const stderrContent = stderr.toString();
 
 		if (!result.success || result.exitCode !== 0) {
-			const perlError = await perl.getLastError();
+			const perlError = perl.getLastError();
 
 			return {
 				success: false,
@@ -403,7 +403,7 @@ export async function writeMetadata(
 			};
 		}
 
-		if (stderrContent?.trim()) {
+		if (stderrContent && stderrContent.trim()) {
 			return {
 				success: false,
 				data: undefined,
@@ -444,7 +444,7 @@ export async function dispose(): Promise<void> {
 	const cachedPerl = cachedPerlRef?.deref();
 
 	if (cachedPerl) {
-		await cachedPerl.dispose();
+		cachedPerl.dispose();
 		cachedPerlRef = null;
 		cachedFileSystemRef = null;
 	}

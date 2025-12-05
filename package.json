@@ -1,6 +1,6 @@
 {
   "name": "@uswriting/exiftool",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "ExifTool powered by WebAssembly to extract and write metadata from files in browsers and Node.js environments using zeroperl",
   "scripts": {
     "build": "npm run build:esm && npm run build:cjs && bun build.ts",
@@ -81,6 +81,6 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
-    "@6over3/zeroperl-ts": "1.0.9"
+    "@6over3/zeroperl-ts": "1.0.10"
   }
 }
