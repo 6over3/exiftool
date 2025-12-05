@@ -1,9 +1,10 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
+import { readFile } from "node:fs/promises";
 import { parseMetadata, writeMetadata } from "../src/index";
 
-describe.serial("EXIF Unicode Character Handling", () => {
+describe("EXIF Unicode Character Handling", () => {
 	function createTestJpeg(): File {
-	
+
 		// Create a minimal JPEG file for testing
 		// This is a 1x1 pixel red JPEG
 		const jpegData = new Uint8Array([
@@ -25,7 +26,7 @@ describe.serial("EXIF Unicode Character Handling", () => {
 		return new File([jpegData], "test.jpg", { type: "image/jpeg" });
 	}
 
-	describe.serial("Korean (한국어) Character Handling", () => {
+	describe("Korean (한국어) Character Handling", () => {
 		it("should correctly preserve Korean text in Artist field", async () => {
 			const testJpegFile = createTestJpeg();
 			const koreanText = "안녕하세요";
@@ -127,7 +128,7 @@ describe.serial("EXIF Unicode Character Handling", () => {
 		});
 	});
 
-	describe.serial("Japanese (日本語) Character Handling", () => {
+	describe("Japanese (日本語) Character Handling", () => {
 		it("should correctly preserve Japanese text in Artist field", async () => {
 			const testJpegFile = createTestJpeg();
 			const japaneseText = "こんにちは世界";
@@ -188,7 +189,7 @@ describe.serial("EXIF Unicode Character Handling", () => {
 		});
 	});
 
-	describe.serial("Chinese (中文) Character Handling", () => {
+	describe("Chinese (中文) Character Handling", () => {
 		it("should correctly preserve Simplified Chinese text", async () => {
 			const testJpegFile = createTestJpeg();
 			const chineseText = "你好世界";
@@ -249,7 +250,7 @@ describe.serial("EXIF Unicode Character Handling", () => {
 		});
 	});
 
-	describe.serial("Mixed Unicode Character Handling", () => {
+	describe("Mixed Unicode Character Handling", () => {
 		it("should handle English text (baseline test)", async () => {
 			const testJpegFile = createTestJpeg();
 			const englishText = "Hello World";
@@ -338,7 +339,7 @@ describe.serial("EXIF Unicode Character Handling", () => {
 		});
 	});
 
-	describe.serial("Byte Length Validation", () => {
+	describe("Byte Length Validation", () => {
 		it("should preserve correct byte representation for Korean text", async () => {
 			const testJpegFile = createTestJpeg();
 			const koreanText = "안녕하세요";
@@ -373,7 +374,7 @@ describe.serial("EXIF Unicode Character Handling", () => {
 		});
 	});
 
-	describe.serial("Edge Cases", () => {
+	describe("Edge Cases", () => {
 		it("should handle empty strings", async () => {
 			const testJpegFile = createTestJpeg();
 			const writeResult = await writeMetadata(
@@ -467,13 +468,13 @@ describe.serial("EXIF Unicode Character Handling", () => {
 	});
 });
 
-describe.serial("EXR File Handling", () => {
+describe("EXR File Handling", () => {
 
 	it("should parse EXR files without format errors", async () => {
-		const exrData = Bun.file("test/data/BrightRings.exr");
+		const exrBuffer = await readFile("test/data/BrightRings.exr");
 
-		const ff = new File([await exrData.arrayBuffer()], "BrightRings.exr", { type: "image/exr" });
-	
+		const ff = new File([exrBuffer], "BrightRings.exr", { type: "image/exr" });
+
 
 		const result = await parseMetadata(ff, {
 			args: ["-json"],
