@@ -49,6 +49,19 @@ if (result.success) {
 }
 ```
 
+### Delete Metadata
+
+```typescript
+import { deleteMetadata } from '@uswriting/exiftool';
+
+const result = await deleteMetadata(file, [ "gps:all", "xmp:geotag" ]);
+
+if (result.success) {
+  // result.data contains the modified file as Uint8Array
+  const modifiedBlob = new Blob([result.data]);
+}
+```
+
 ### Extracting Specific Metadata
 
 ```typescript
@@ -115,6 +128,42 @@ async function writeMetadata(
 
 - `file`: Either a browser `File` object or a `Binaryfile` object with `name` and `data` properties.
 - `tags`: Object containing metadata tags to write, where keys are tag names and values are tag values.
+- `options`: Configuration options for the write operation.
+
+#### Return Value
+
+Returns a Promise that resolves to an `ExifToolOutput` object:
+
+```typescript
+type ExifToolOutput<TOutput> =
+  | {
+      success: true;
+      data: TOutput;
+      error: string;
+      exitCode: 0;
+    }
+  | {
+      success: false;
+      data: undefined;
+      error: string;
+      exitCode: number | undefined;
+    };
+```
+
+### deleteMetadata()
+
+```typescript
+async function deleteMetadata(
+  file: Binaryfile | File,
+  tags: ExifTags,
+  options: ExifToolOptions = {}
+): Promise<ExifToolOutput<ArrayBuffer>>
+```
+
+#### Parameters
+
+- `file`: Either a browser `File` object or a `Binaryfile` object with `name` and `data` properties.
+- `tags`: Array containing metadata tags to delete
 - `options`: Configuration options for the write operation.
 
 #### Return Value

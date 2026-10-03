@@ -158,6 +158,13 @@ function transformTags(tags: ExifTags): string[] {
 }
 
 /**
+ * Transform delete tags array into ExifTool command-line arguments
+ */
+function transformDeleteTags(tags: ExifTags): string[] {
+	return Array.isArray(tags) ? tags.flatMap((tag) => `-${tag}=`) : [`-${tags}=`];
+}
+
+/**
  * Extract metadata from a file using ExifTool
  *
  * @template TReturn Type of the returned data after transformation (defaults to string)
@@ -380,6 +387,148 @@ export async function writeMetadata(
 		}
 
 		args.push(...transformTags(tags));
+
+		const tempFile = `/${crypto.randomUUID().replace(/-/g, "")}.tmp`;
+		tempFiles.push(tempFile);
+
+		args.push("-o", tempFile);
+		args.push(inputPath);
+
+		const result = await perl.runFile("/exiftool", args);
+		perl.flush();
+
+		const stderrContent = stderr.toString();
+
+		if (!result.success || result.exitCode !== 0) {
+			const perlError = perl.getLastError();
+
+			return {
+				success: false,
+				data: undefined,
+				error: perlError || stderrContent || "Unknown error",
+				exitCode: result.exitCode,
+			};
+		}
+
+		if (stderrContent && stderrContent.trim()) {
+			return {
+				success: false,
+				data: undefined,
+				error: stderrContent,
+				exitCode: 0,
+			};
+		}
+
+		const node = fileSystem.lookup(tempFile);
+		if (!node || node.type !== "file") {
+			return {
+				success: false,
+				data: undefined,
+				error: `Temporary output file not found: ${tempFile}`,
+				exitCode: 0,
+			};
+		}
+
+		const outputData =
+			node.content instanceof Blob
+				? await node.content.arrayBuffer()
+				: (node.content.buffer as ArrayBuffer);
+
+		return {
+			success: true,
+			data: outputData,
+			exitCode: 0,
+		};
+	} finally {
+		cleanupTempFiles(fileSystem, tempFiles);
+	}
+}
+
+/**
+ * Delete metadata from a file using ExifTool
+ *
+ * This function modifies an existing file by deleting metadata tag(s).
+ * The operation runs entirely in the browser using WebAssembly without requiring server uploads.
+ *
+ * @param file File for metadata deletion (Browser File object or Binaryfile)
+ * @param tags Array containing metadata tags to delete
+ * @param options Configuration options for the delete operation
+ * @returns Promise resolving to the delete operation result containing the modified file data
+ *
+ * @example
+ * // Basic usage with browser File object
+ * const input = document.querySelector('input[type="file"]');
+ * input.addEventListener('change', async () => {
+ *   const file = input.files[0];
+ *   const result = await deleteMetadata(file, [ "gps:all", "xmp:geotag" ]);
+ *
+ *   if (result.success) {
+ *     // result.data contains the modified file as ArrayBuffer
+ *     const modifiedBlob = new Blob([result.data]);
+ *     // Save or use the modified file
+ *   }
+ * });
+ *
+ * @example
+ * // Handle errors properly
+ * try {
+ *   const result = await deleteMetadata(file, tags);
+ *   if (result.success) {
+ *     console.log('Metadata deleted successfully');
+ *     downloadFile(result.data, `modified_${file.name}`);
+ *   } else {
+ *     console.error('Delete failed:', result.error);
+ *   }
+ * } catch (error) {
+ *   console.error('Operation failed:', error);
+ * }
+ *
+ * @remarks
+ * - The function creates a temporary output file internally and returns its contents
+ * - Original file is not modified in place; a new file with metadata is generated
+ * - Supports all ExifTool-compatible metadata formats (EXIF, IPTC, XMP, etc.)
+ * - Tag names should follow ExifTool conventions (e.g., 'EXIF:Artist', 'XMP:Creator')
+ * - Array values in tags are automatically converted to multiple ExifTool arguments
+ * - The returned ArrayBuffer can be converted to a Blob for download or further processing
+ *
+ * @see {@link https://exiftool.org/TagNames/index.html} for complete tag reference
+ * @see {@link parseMetadata} for reading metadata from files
+ */
+export async function deleteMetadata(
+	file: Binaryfile | File,
+	tags: ExifTags,
+	options: ExifToolOptions = {},
+): Promise<ExifToolOutput<ArrayBuffer>> {
+	const { perl, fileSystem } = await getZeroPerl(options.fetch);
+	const tempFiles: string[] = [];
+
+	stdout.clear();
+	stderr.clear();
+	await perl.reset();
+
+	try {
+		const inputPath = `/${file.name}`;
+		if (file instanceof File) {
+			fileSystem.addFile(inputPath, file);
+		} else {
+			fileSystem.addFile(inputPath, file.data);
+		}
+		tempFiles.push(inputPath);
+
+		const args = [...(options.args || [])];
+
+		if (options.config) {
+			const configPath = `/${options.config.name}`;
+			if (options.config instanceof File) {
+				fileSystem.addFile(configPath, options.config);
+			} else {
+				fileSystem.addFile(configPath, options.config.data);
+			}
+			tempFiles.push(configPath);
+			args.push(`-config`, configPath);
+		}
+
+		args.push(...transformDeleteTags(tags));
 
 		const tempFile = `/${crypto.randomUUID().replace(/-/g, "")}.tmp`;
 		tempFiles.push(tempFile);
